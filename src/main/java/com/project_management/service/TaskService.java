@@ -18,8 +18,8 @@ public interface TaskService {
 	List<TaskResponseDto> getAllTasks();
 
 	boolean deleteTask(Long taskId);
-	
+
 	ImportResult importCsv(MultipartFile file);
 
-	int importExcel(MultipartFile file);
+	ImportResult importExcel(MultipartFile file);
 }

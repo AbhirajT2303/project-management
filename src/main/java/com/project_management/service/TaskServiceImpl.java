@@ -5,10 +5,12 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.lang.reflect.Field;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -17,16 +19,27 @@ import java.util.stream.Collectors;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVRecord;
+import org.apache.poi.hssf.usermodel.HSSFWorkbook;
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.modelmapper.ModelMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.project_management.dto.ImportResult;
 import com.project_management.dto.TaskRequestDto;
 import com.project_management.dto.TaskResponseDto;
 import com.project_management.entities.Task;
 import com.project_management.exception.ResourceNotFoundException;
 import com.project_management.repository.TaskRepository;
+import com.theokanning.openai.completion.chat.ChatCompletionRequest;
+import com.theokanning.openai.completion.chat.ChatCompletionResult;
+import com.theokanning.openai.completion.chat.ChatMessage;
+import com.theokanning.openai.service.OpenAiService;
 
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -40,6 +53,8 @@ public class TaskServiceImpl implements TaskService {
 
 	private final TaskRepository taskRepository;
 	private final ModelMapper modelMapper;
+	private final OpenAiService openAiService;
+	boolean aiMappingUsed = false;
 	private final DateTimeFormatter[] dateFormatters = { DateTimeFormatter.ofPattern("yyyy-MM-dd"),
 			DateTimeFormatter.ofPattern("dd/MM/yyyy"), DateTimeFormatter.ofPattern("MM/dd/yyyy"),
 			DateTimeFormatter.ofPattern("dd-MM-yyyy"), DateTimeFormatter.ofPattern("MM-dd-yyyy") };
@@ -95,13 +110,21 @@ public class TaskServiceImpl implements TaskService {
 		try (BufferedReader reader = new BufferedReader(new InputStreamReader(file.getInputStream()));
 				CSVParser csvParser = new CSVParser(reader, CSVFormat.DEFAULT.withFirstRecordAsHeader())) {
 
-			Set<String> fileHeaders = csvParser.getHeaderMap().keySet();
-			log.info("CSV file headers detected: {}", fileHeaders);
+			Map<String, Integer> originalHeaderMap = csvParser.getHeaderMap();
+			Set<String> originalHeaders = originalHeaderMap.keySet();
+
+			Set<String> trimmedHeaders = originalHeaders.stream().map(String::trim).collect(Collectors.toSet());
+
+			Map<String, String> headerLookupMap = originalHeaderMap.keySet().stream()
+					.collect(Collectors.toMap(header -> header.trim(), header -> header));
+
+			log.info("CSV file headers detected (original): {}", originalHeaderMap.keySet());
+			log.info("CSV file headers detected (trimmed): {}", trimmedHeaders);
 
 			Set<String> taskFields = getTaskEntityFields();
 			log.info("Task entity fields: {}", taskFields);
 
-			Map<String, String> columnMapping = createColumnMapping(fileHeaders, taskFields);
+			Map<String, String> columnMapping = createColumnMapping(trimmedHeaders, taskFields);
 			log.info("Column mapping created: {}", columnMapping);
 
 			if (columnMapping.isEmpty()) {
@@ -120,19 +143,23 @@ public class TaskServiceImpl implements TaskService {
 				boolean hasValidData = false;
 
 				for (Map.Entry<String, String> mapping : columnMapping.entrySet()) {
-					String csvColumn = mapping.getKey();
+					String trimmedCsvColumn = mapping.getKey();
 					String taskField = mapping.getValue();
 
 					try {
-						String cellValue = csvRecord.get(csvColumn);
-						if (cellValue != null && !cellValue.trim().isEmpty()) {
-							boolean fieldSet = setTaskFieldValue(task, taskField, cellValue.trim());
-							if (fieldSet) {
-								hasValidData = true;
+						String originalCsvColumn = headerLookupMap.get(trimmedCsvColumn);
+						if (originalCsvColumn != null) {
+							String cellValue = csvRecord.get(originalCsvColumn);
+							if (cellValue != null && !cellValue.trim().isEmpty()) {
+								boolean fieldSet = setTaskFieldValue(task, taskField, cellValue.trim());
+								if (fieldSet) {
+									hasValidData = true;
+								}
 							}
 						}
 					} catch (Exception e) {
-						log.warn("Error processing row {} column '{}': {}", totalRows, csvColumn, e.getMessage());
+						log.warn("Error processing row {} column '{}': {}", totalRows, trimmedCsvColumn,
+								e.getMessage());
 					}
 				}
 
@@ -153,7 +180,8 @@ public class TaskServiceImpl implements TaskService {
 			log.info("CSV import completed - Total rows: {}, Rows with data: {}, Rows saved: {}, Rows skipped: {}",
 					totalRows, rowsWithData, rowsSaved, rowsSkipped);
 
-			return new ImportResult(totalRows, rowsWithData, rowsSaved, rowsSkipped, fileName);
+			return new ImportResult(totalRows, rowsWithData, rowsSaved, rowsSkipped, fileName, columnMapping,
+					aiMappingUsed);
 
 		} catch (IOException e) {
 			log.error("Error processing CSV file: {}", e.getMessage(), e);
@@ -165,8 +193,159 @@ public class TaskServiceImpl implements TaskService {
 	}
 
 	@Override
-	public int importExcel(MultipartFile file) {
-		return 0;
+	public ImportResult importExcel(MultipartFile file) {
+		String fileName = file.getOriginalFilename();
+
+		try {
+			Workbook workbook;
+
+			if (fileName.endsWith(".xlsx")) {
+				workbook = new XSSFWorkbook(file.getInputStream());
+			} else if (fileName.endsWith(".xls")) {
+				workbook = new HSSFWorkbook(file.getInputStream());
+			} else {
+				throw new RuntimeException("Unsupported Excel format. Only .xls and .xlsx files are supported.");
+			}
+
+			Sheet sheet = workbook.getSheetAt(0);
+			Iterator<Row> rows = sheet.iterator();
+
+			Map<String, Integer> originalFileHeaders = new HashMap<>();
+			Map<String, String> headerLookupMap = new HashMap<>();
+
+			if (rows.hasNext()) {
+				Row headerRow = rows.next();
+				for (int i = 0; i < headerRow.getLastCellNum(); i++) {
+					Cell cell = headerRow.getCell(i);
+					if (cell != null) {
+						String originalHeaderName = getCellValueAsString(cell);
+						if (!originalHeaderName.isEmpty()) {
+							String trimmedHeaderName = originalHeaderName.trim();
+							originalFileHeaders.put(originalHeaderName, i);
+							headerLookupMap.put(trimmedHeaderName, originalHeaderName);
+						}
+					}
+				}
+			}
+
+			Set<String> trimmedHeaders = headerLookupMap.keySet();
+
+			log.info("Excel file headers detected (original): {}", originalFileHeaders.keySet());
+			log.info("Excel file headers detected (trimmed): {}", trimmedHeaders);
+
+			Set<String> taskFields = getTaskEntityFields();
+			log.info("Task entity fields: {}", taskFields);
+
+			Map<String, String> columnMapping = createColumnMapping(trimmedHeaders, taskFields);
+			log.info("Column mapping created: {}", columnMapping);
+
+			if (columnMapping.isEmpty()) {
+				workbook.close();
+				throw new RuntimeException("No matching columns found between Excel file and Task entity. "
+						+ "Please check column names in your Excel file.");
+			}
+
+			List<Task> validTasks = new ArrayList<>();
+			int totalRows = 0;
+			int rowsWithData = 0;
+
+			while (rows.hasNext()) {
+				Row currentRow = rows.next();
+				totalRows++;
+
+				Task task = new Task();
+				boolean hasValidData = false;
+
+				for (Map.Entry<String, String> mapping : columnMapping.entrySet()) {
+					String trimmedExcelColumn = mapping.getKey();
+					String taskField = mapping.getValue();
+
+					try {
+						String originalExcelColumn = headerLookupMap.get(trimmedExcelColumn);
+						if (originalExcelColumn != null) {
+							Integer columnIndex = originalFileHeaders.get(originalExcelColumn);
+							if (columnIndex != null) {
+								Cell cell = currentRow.getCell(columnIndex);
+								String cellValue = getCellValueAsString(cell);
+
+								if (!cellValue.isEmpty()) {
+									boolean fieldSet = setTaskFieldValue(task, taskField, cellValue);
+									if (fieldSet) {
+										hasValidData = true;
+									}
+								}
+							}
+						}
+					} catch (Exception e) {
+						log.warn("Error processing Excel row {} column '{}': {}", totalRows, trimmedExcelColumn,
+								e.getMessage());
+					}
+				}
+
+				if (hasValidData) {
+					validTasks.add(task);
+					rowsWithData++;
+				}
+			}
+
+			workbook.close();
+
+			List<Task> filteredTasks = validTasks.stream().filter(task -> !hasNullFields(task))
+					.collect(Collectors.toList());
+
+			List<Task> savedTasks = taskRepository.saveAll(filteredTasks);
+
+			int rowsSaved = savedTasks.size();
+			int rowsSkipped = totalRows - rowsSaved;
+
+			log.info("Excel import completed - Total rows: {}, Rows with data: {}, Rows saved: {}, Rows skipped: {}",
+					totalRows, rowsWithData, rowsSaved, rowsSkipped);
+
+			return new ImportResult(totalRows, rowsWithData, rowsSaved, rowsSkipped, fileName, columnMapping,
+					aiMappingUsed);
+
+		} catch (IOException e) {
+			log.error("Error processing Excel file: {}", e.getMessage(), e);
+			throw new RuntimeException("Failed to process Excel file: " + e.getMessage());
+		} catch (Exception e) {
+			log.error("Unexpected error during Excel import: {}", e.getMessage(), e);
+			throw new RuntimeException("Excel import failed: " + e.getMessage());
+		}
+	}
+
+	private String getCellValueAsString(Cell cell) {
+		if (cell == null) {
+			return "";
+		}
+
+		switch (cell.getCellType()) {
+		case STRING:
+			return cell.getStringCellValue().trim();
+		case NUMERIC:
+			if (org.apache.poi.ss.usermodel.DateUtil.isCellDateFormatted(cell)) {
+				LocalDate date = cell.getDateCellValue().toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
+				return date.toString();
+			}
+			double numericValue = cell.getNumericCellValue();
+
+			if (numericValue == Math.floor(numericValue)) {
+				return String.valueOf((long) numericValue);
+			} else {
+				return String.valueOf(numericValue);
+			}
+		case BOOLEAN:
+			return String.valueOf(cell.getBooleanCellValue());
+		case FORMULA:
+			try {
+				return getCellValueAsString(cell);
+			} catch (Exception e) {
+				return cell.getCellFormula();
+			}
+		case BLANK:
+		case _NONE:
+		default:
+			return "";
+		}
 	}
 
 	private Set<String> getTaskEntityFields() {
@@ -196,9 +375,33 @@ public class TaskServiceImpl implements TaskService {
 			}
 		}
 
-		for (String fileHeader : fileHeaders) {
-			if (!mapping.containsKey(fileHeader)) {
-				log.warn("CSV column '{}' could not be mapped to any Task field", fileHeader);
+		Set<String> unmapped = fileHeaders.stream().filter(h -> !mapping.containsKey(h)).collect(Collectors.toSet());
+
+		if (!unmapped.isEmpty()) {
+			aiMappingUsed = true;
+			log.info("Unmapped headers: {}", unmapped);
+			try {
+				ChatCompletionRequest request = ChatCompletionRequest.builder().model("gpt-4o-mini")
+						.messages(List.of(new ChatMessage("system", "You output only valid JSON."),
+								new ChatMessage("user",
+										String.format(
+												"Match these Excel/CSV headers: %s to these task fields: %s. "
+														+ "Return a JSON object {\"header\": \"taskField\"}.",
+												unmapped, taskFields))))
+						.maxTokens(300).temperature(0.0).build();
+
+				ChatCompletionResult result = openAiService.createChatCompletion(request);
+
+				String jsonMapping = result.getChoices().get(0).getMessage().getContent().trim();
+
+				ObjectMapper objectMapper = new ObjectMapper();
+				Map<String, String> aiMapping = objectMapper.readValue(jsonMapping, Map.class);
+
+				mapping.putAll(aiMapping);
+				log.info("AI mapping result: {}", jsonMapping);
+
+			} catch (Exception e) {
+				log.error("AI column mapping failed: {}", e.getMessage(), e);
 			}
 		}
 

@@ -88,31 +88,33 @@ public class TaskController {
 		String extension = filename.substring(filename.lastIndexOf(".") + 1).toLowerCase();
 
 		try {
+			ImportResult result;
+
 			if ("csv".equals(extension)) {
 				log.info("Processing CSV file: {}", filename);
-
-				ImportResult result = taskService.importCsv(file);
-
-				Map<String, Object> responseData = new HashMap<>();
-				responseData.put("fileName", result.getFileName());
-				responseData.put("totalRowsFound", result.getTotalRows());
-				responseData.put("totalRowsSaved", result.getRowsSaved());
-				responseData.put("totalRowsSkipped", result.getRowsSkipped());
-				responseData.put("rowsWithData", result.getRowsWithData());
-
-				String message = String.format("Import completed: %d total rows, %d saved, %d skipped from %s",
-						result.getTotalRows(), result.getRowsSaved(), result.getRowsSkipped(), filename);
-
-				log.info("Successfully completed import: {}", message);
-				return ResponseEntity.ok(new ApiResponse<>(true, message, responseData));
-
+				result = taskService.importCsv(file);
 			} else if ("xls".equals(extension) || "xlsx".equals(extension)) {
-				return ResponseEntity.badRequest()
-						.body(new ApiResponse<>(false, "Excel files not supported yet. Only CSV files allowed", null));
+				log.info("Processing Excel file: {}", filename);
+				result = taskService.importExcel(file);
 			} else {
-				return ResponseEntity.badRequest()
-						.body(new ApiResponse<>(false, "Unsupported file type. Only CSV files allowed", null));
+				return ResponseEntity.badRequest().body(new ApiResponse<>(false,
+						"Unsupported file type. Only CSV, XLS, and XLSX files are allowed", null));
 			}
+
+			Map<String, Object> responseData = new HashMap<>();
+			responseData.put("fileName", result.getFileName());
+			responseData.put("totalRowsFound", result.getTotalRows());
+			responseData.put("totalRowsSaved", result.getRowsSaved());
+			responseData.put("totalRowsSkipped", result.getRowsSkipped());
+			responseData.put("rowsWithData", result.getRowsWithData());
+			responseData.put("detectedColumnMappings", result.getDetectedColumnMappings());
+			responseData.put("aiMappingUsed", result.isAiMappingUsed());
+
+			String message = String.format("Import completed: %d total rows, %d saved, %d skipped from %s",
+					result.getTotalRows(), result.getRowsSaved(), result.getRowsSkipped(), filename);
+
+			log.info("Successfully completed import: {}", message);
+			return ResponseEntity.ok(new ApiResponse<>(true, message, responseData));
 
 		} catch (Exception e) {
 			log.error("Error importing file {}: {}", filename, e.getMessage(), e);
@@ -120,5 +122,4 @@ public class TaskController {
 					.body(new ApiResponse<>(false, "Import failed: " + e.getMessage(), null));
 		}
 	}
-
 }
