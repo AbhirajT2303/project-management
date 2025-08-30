@@ -1,6 +1,8 @@
 package com.project_management.controller;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -12,9 +14,12 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.project_management.dto.ApiResponse;
+import com.project_management.dto.ImportResult;
 import com.project_management.dto.TaskRequestDto;
 import com.project_management.dto.TaskResponseDto;
 import com.project_management.service.TaskService;
@@ -66,4 +71,54 @@ public class TaskController {
 		taskService.deleteTask(id);
 		return ResponseEntity.ok(new ApiResponse<>(true, "Task deleted successfully", null));
 	}
+
+	@PostMapping(value = "/upload", consumes = "multipart/form-data")
+	public ResponseEntity<ApiResponse<Map<String, Object>>> uploadTasks(@RequestPart("file") MultipartFile file) {
+
+		// Validate file
+		if (file.isEmpty()) {
+			return ResponseEntity.badRequest().body(new ApiResponse<>(false, "File is empty", null));
+		}
+
+		String filename = file.getOriginalFilename();
+		if (filename == null) {
+			return ResponseEntity.badRequest().body(new ApiResponse<>(false, "Invalid file name", null));
+		}
+
+		String extension = filename.substring(filename.lastIndexOf(".") + 1).toLowerCase();
+
+		try {
+			if ("csv".equals(extension)) {
+				log.info("Processing CSV file: {}", filename);
+
+				ImportResult result = taskService.importCsv(file);
+
+				Map<String, Object> responseData = new HashMap<>();
+				responseData.put("fileName", result.getFileName());
+				responseData.put("totalRowsFound", result.getTotalRows());
+				responseData.put("totalRowsSaved", result.getRowsSaved());
+				responseData.put("totalRowsSkipped", result.getRowsSkipped());
+				responseData.put("rowsWithData", result.getRowsWithData());
+
+				String message = String.format("Import completed: %d total rows, %d saved, %d skipped from %s",
+						result.getTotalRows(), result.getRowsSaved(), result.getRowsSkipped(), filename);
+
+				log.info("Successfully completed import: {}", message);
+				return ResponseEntity.ok(new ApiResponse<>(true, message, responseData));
+
+			} else if ("xls".equals(extension) || "xlsx".equals(extension)) {
+				return ResponseEntity.badRequest()
+						.body(new ApiResponse<>(false, "Excel files not supported yet. Only CSV files allowed", null));
+			} else {
+				return ResponseEntity.badRequest()
+						.body(new ApiResponse<>(false, "Unsupported file type. Only CSV files allowed", null));
+			}
+
+		} catch (Exception e) {
+			log.error("Error importing file {}: {}", filename, e.getMessage(), e);
+			return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+					.body(new ApiResponse<>(false, "Import failed: " + e.getMessage(), null));
+		}
+	}
+
 }

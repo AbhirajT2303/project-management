@@ -2,6 +2,9 @@ package com.project_management.service;
 
 import java.util.List;
 
+import org.springframework.web.multipart.MultipartFile;
+
+import com.project_management.dto.ImportResult;
 import com.project_management.dto.TaskRequestDto;
 import com.project_management.dto.TaskResponseDto;
 
@@ -15,4 +18,8 @@ public interface TaskService {
 	List<TaskResponseDto> getAllTasks();
 
 	boolean deleteTask(Long taskId);
+	
+	ImportResult importCsv(MultipartFile file);
+
+	int importExcel(MultipartFile file);
 }
