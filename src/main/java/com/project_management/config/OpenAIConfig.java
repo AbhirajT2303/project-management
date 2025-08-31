@@ -14,7 +14,7 @@ public class OpenAIConfig {
     public OpenAiService openAiService() {
         String apiKey = System.getenv("OPENAI_API_KEY");
         if (apiKey == null) {
-            apiKey = "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"; 
+            apiKey = "api_key"; 
         }
         return new OpenAiService(apiKey);
     }
