@@ -20,8 +20,10 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.project_management.dto.ApiResponse;
 import com.project_management.dto.ImportResult;
+import com.project_management.dto.TaskActionRequestDto;
 import com.project_management.dto.TaskRequestDto;
 import com.project_management.dto.TaskResponseDto;
+import com.project_management.service.TaskActionService;
 import com.project_management.service.TaskService;
 
 import jakarta.validation.Valid;
@@ -37,6 +39,7 @@ import lombok.extern.slf4j.Slf4j;
 public class TaskController {
 
 	private final TaskService taskService;
+	private final TaskActionService taskActionService;
 
 	@PostMapping
 	public ResponseEntity<ApiResponse<TaskResponseDto>> createTask(@Valid @RequestBody TaskRequestDto taskRequest) {
@@ -120,6 +123,18 @@ public class TaskController {
 			log.error("Error importing file {}: {}", filename, e.getMessage(), e);
 			return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
 					.body(new ApiResponse<>(false, "Import failed: " + e.getMessage(), null));
+		}
+	}
+
+	@PutMapping("/{id}/actions")
+	public ResponseEntity<ApiResponse<TaskResponseDto>> executeAction(@PathVariable @Positive Long id,
+			@Valid @RequestBody TaskActionRequestDto actionRequest) {
+		try {
+			TaskResponseDto updatedTask = taskActionService.executeAction(id, actionRequest);
+			return ResponseEntity.ok(new ApiResponse<>(true, "Action executed successfully", updatedTask));
+		} catch (Exception e) {
+			log.error("Error executing action: {}", e.getMessage());
+			return ResponseEntity.badRequest().body(new ApiResponse<>(false, e.getMessage(), null));
 		}
 	}
 }

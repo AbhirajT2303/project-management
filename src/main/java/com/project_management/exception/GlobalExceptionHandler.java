@@ -116,4 +116,10 @@ public class GlobalExceptionHandler {
 			return targetType;
 		}
 	}
+
+	@ExceptionHandler(InvalidActionException.class)
+	public ResponseEntity<ApiResponse<Object>> handleInvalidAction(InvalidActionException ex, WebRequest request) {
+		log.error("Invalid action: {}", ex.getMessage());
+		return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ApiResponse<>(false, ex.getMessage(), null));
+	}
 }

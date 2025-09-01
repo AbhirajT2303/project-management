@@ -1,12 +1,19 @@
 package com.project_management.entities;
 
 import java.time.LocalDate;
-import java.util.Date;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -27,7 +34,7 @@ public class Task extends BaseEntity {
 
 	@Enumerated(EnumType.STRING)
 	@Column(name = "status", length = 30, nullable = false)
-	private Status status;
+	private Status status = Status.NEW;
 
 	@Enumerated(EnumType.STRING)
 	@Column(name = "priority", length = 30, nullable = false)
@@ -35,4 +42,47 @@ public class Task extends BaseEntity {
 
 	@Column(name = "due_date", nullable = false)
 	private LocalDate dueDate;
+
+	@Column(name = "assignee", length = 100)
+	private String assignee;
+
+	@Column(name = "last_status_change")
+	private LocalDateTime lastStatusChange;
+
+	@OneToMany(mappedBy = "task", cascade = CascadeType.ALL, orphanRemoval = true)
+	@OrderBy("performedAt DESC")
+	private List<TaskActionHistory> actionHistory = new ArrayList<>();
+
+	@PrePersist
+	protected void onCreate() {
+		if (status == null) {
+			status = Status.NEW;
+		}
+		lastStatusChange = LocalDateTime.now();
+	}
+
+	@PreUpdate
+	protected void onUpdate() {
+		lastStatusChange = LocalDateTime.now();
+	}
+
+	public boolean isFinalState() {
+		return status == Status.COMPLETED || status == Status.REJECTED;
+	}
+
+	public boolean canBeAssigned() {
+		return status == Status.NEW || status == Status.ON_HOLD;
+	}
+
+	public boolean isInProgress() {
+		return status == Status.IN_PROGRESS;
+	}
+
+	public String getAssigneeDisplayName() {
+		return assignee != null ? assignee : "Unassigned";
+	}
+
+	public TaskActionHistory getLastAction() {
+		return actionHistory.isEmpty() ? null : actionHistory.get(0);
+	}
 }

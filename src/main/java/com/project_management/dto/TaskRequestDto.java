@@ -25,9 +25,6 @@ public class TaskRequestDto {
 	@Size(max = 255, message = "Description must not exceed 255 characters")
 	private String description;
 
-	@NotNull(message = "Status is required")
-	private Status status;
-
 	@NotNull(message = "Priority is required")
 	private Priority priority;
 

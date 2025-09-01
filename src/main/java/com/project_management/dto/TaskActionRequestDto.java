@@ -1,29 +1,28 @@
 package com.project_management.dto;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.util.List;
 
 import com.project_management.entities.Priority;
-import com.project_management.entities.Status;
 import com.project_management.entities.TaskAction;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
 
 @Getter
 @Setter
-public class TaskResponseDto {
-	private Long id;
+@Valid
+public class TaskActionRequestDto {
+	@NotNull(message = "Action is required")
+	private TaskAction action;
 	private String taskName;
 	private String description;
-	private Status status;
 	private Priority priority;
 	private LocalDate dueDate;
-	
 	private String assignee;
-    private String rejectionReason;
-    private String comments;
-    private LocalDateTime lastStatusChange;
-    private List<TaskAction> availableActions;
+	private String comments;
+	private String reason;
+	private String performedBy;
+
 }

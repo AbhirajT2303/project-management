@@ -44,14 +44,14 @@ class TaskServiceImplTest {
 		TaskRequestDto dto = new TaskRequestDto();
 		dto.setTaskName("Test Task");
 		dto.setDescription("Test Description");
-		dto.setStatus(Status.TODO);
+//		dto.setStatus(Status.ASSIGNED);
 		dto.setPriority(Priority.HIGH);
 		dto.setDueDate(LocalDate.now().plusDays(5));
 
 		Task entity = new Task();
 		entity.setTaskName("Test Task");
 		entity.setDescription("Test Description");
-		entity.setStatus(Status.TODO);
+		entity.setStatus(Status.ASSIGNED);
 		entity.setPriority(Priority.HIGH);
 		entity.setDueDate(LocalDate.now().plusDays(5));
 

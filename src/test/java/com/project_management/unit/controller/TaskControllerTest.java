@@ -46,7 +46,7 @@ class TaskControllerTest {
 		TaskRequestDto dto = new TaskRequestDto();
 		dto.setTaskName("Test Task");
 		dto.setDescription("Test Description");
-		dto.setStatus(Status.TODO);
+//		dto.setStatus(Status.ASSIGNED);
 		dto.setPriority(Priority.HIGH);
 		dto.setDueDate(LocalDate.now().plusDays(5));
 

@@ -62,7 +62,7 @@ public class TaskIntegrationTest {
 		taskRequest.setTaskName("Implement testing");
 		taskRequest.setDescription("Test description");
 		taskRequest.setPriority(Priority.HIGH);
-		taskRequest.setStatus(Status.TODO);
+//		taskRequest.setStatus(Status.ASSIGNED);
 		taskRequest.setDueDate(LocalDate.of(2025, 12, 31));
 
 		ResponseEntity<ApiResponse> response = restTemplate.postForEntity(createURLWithPort("/api/v1/tasks"),
@@ -96,7 +96,7 @@ public class TaskIntegrationTest {
 		taskRequest.setTaskName("A".repeat(31)); // Over 30 character limit
 		taskRequest.setDescription("Valid description");
 		taskRequest.setPriority(Priority.HIGH);
-		taskRequest.setStatus(Status.TODO);
+//		taskRequest.setStatus(Status.ASSIGNED);
 		taskRequest.setDueDate(LocalDate.now().plusDays(10));
 
 		ResponseEntity<ApiResponse> response = restTemplate.postForEntity(createURLWithPort("/api/v1/tasks"),
@@ -111,7 +111,7 @@ public class TaskIntegrationTest {
 		taskRequest.setTaskName("Valid Task");
 		taskRequest.setDescription("Valid description");
 		taskRequest.setPriority(Priority.HIGH);
-		taskRequest.setStatus(Status.TODO);
+//		taskRequest.setStatus(Status.ASSIGNED);
 		taskRequest.setDueDate(LocalDate.now().minusDays(1)); // Past date
 
 		ResponseEntity<ApiResponse> response = restTemplate.postForEntity(createURLWithPort("/api/v1/tasks"),
@@ -193,7 +193,7 @@ public class TaskIntegrationTest {
 		TaskRequestDto updateRequest = new TaskRequestDto();
 		updateRequest.setTaskName("Updated Task");
 		updateRequest.setDescription("Updated Description");
-		updateRequest.setStatus(Status.IN_PROGRESS);
+//		updateRequest.setStatus(Status.IN_PROGRESS);
 		updateRequest.setPriority(Priority.MEDIUM);
 		updateRequest.setDueDate(LocalDate.of(2025, 11, 30));
 
@@ -213,7 +213,7 @@ public class TaskIntegrationTest {
 		TaskRequestDto updateRequest = new TaskRequestDto();
 		updateRequest.setTaskName("Updated Task");
 		updateRequest.setDescription("Updated Description");
-		updateRequest.setStatus(Status.IN_PROGRESS);
+//		updateRequest.setStatus(Status.IN_PROGRESS);
 		updateRequest.setPriority(Priority.MEDIUM);
 		updateRequest.setDueDate(LocalDate.of(2025, 11, 30));
 
@@ -411,7 +411,7 @@ public class TaskIntegrationTest {
 		taskRequest.setTaskName("Task with @#$%^&*()");
 		taskRequest.setDescription("Description with special chars: !@#$%");
 		taskRequest.setPriority(Priority.HIGH);
-		taskRequest.setStatus(Status.TODO);
+//		taskRequest.setStatus(Status.ASSIGNED);
 		taskRequest.setDueDate(LocalDate.of(2025, 12, 31));
 
 		ResponseEntity<ApiResponse> response = restTemplate.postForEntity(createURLWithPort("/api/v1/tasks"),
@@ -426,7 +426,7 @@ public class TaskIntegrationTest {
 		taskRequest.setTaskName("Task with 中文 и русский");
 		taskRequest.setDescription("Description with émojis 🚀");
 		taskRequest.setPriority(Priority.HIGH);
-		taskRequest.setStatus(Status.TODO);
+//		taskRequest.setStatus(Status.ASSIGNED);
 		taskRequest.setDueDate(LocalDate.of(2025, 12, 31));
 
 		ResponseEntity<ApiResponse> response = restTemplate.postForEntity(createURLWithPort("/api/v1/tasks"),
@@ -454,7 +454,7 @@ public class TaskIntegrationTest {
 		TaskRequestDto taskRequest = new TaskRequestDto();
 		taskRequest.setTaskName(taskName);
 		taskRequest.setDescription(description);
-		taskRequest.setStatus(Status.TODO);
+//		taskRequest.setStatus(Status.ASSIGNED);
 		taskRequest.setPriority(Priority.HIGH);
 		taskRequest.setDueDate(LocalDate.of(2025, 12, 31));
 
