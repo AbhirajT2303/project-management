@@ -132,6 +132,9 @@ public class TaskController {
 		try {
 			TaskResponseDto updatedTask = taskActionService.executeAction(id, actionRequest);
 			return ResponseEntity.ok(new ApiResponse<>(true, "Action executed successfully", updatedTask));
+		} catch (IllegalStateException e) {
+			return ResponseEntity.badRequest().body(new ApiResponse<>(false, e.getMessage(), null));
+
 		} catch (Exception e) {
 			log.error("Error executing action: {}", e.getMessage());
 			return ResponseEntity.badRequest().body(new ApiResponse<>(false, e.getMessage(), null));

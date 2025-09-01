@@ -36,6 +36,11 @@ public class TaskActionServiceImpl implements TaskActionService {
 		Task task = taskRepository.findById(taskId)
 				.orElseThrow(() -> new ResourceNotFoundException("Task not found with id: " + taskId));
 
+		if (task.isFinalState()) {
+			throw new IllegalStateException("Task cannot be modified as it is in a final state: " + task.getStatus()
+					+ ". No further actions are allowed on COMPLETED or REJECTED tasks.");
+		}
+
 		if (!TaskAction.isActionValidForStatus(request.getAction(), task.getStatus())) {
 
 			List<TaskAction> validActions = TaskAction.getValidActionsForStatus(task.getStatus());

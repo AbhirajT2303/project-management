@@ -30,7 +30,7 @@ public class Task extends BaseEntity {
 	private String taskName;
 
 	@Column(name = "description", length = 255, nullable = false)
-	private String description;
+	private String description; 
 
 	@Enumerated(EnumType.STRING)
 	@Column(name = "status", length = 30, nullable = false)
