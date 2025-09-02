@@ -1,0 +1,40 @@
+{
+	"finalStates": [
+		"COMPLETED",
+		"REJECTED"
+	],
+	"transitions": {
+		"NEW": {
+			"ASSIGN_TO_TEAM": "ASSIGNED",
+			"ADD_DETAILS": "REJECTED"
+		},
+		"ASSIGNED": {
+			"START_WORKING": "IN_PROGRESS",
+			"DELEGATE": "ON_HOLD",
+			"REQUEST_INFO": "REJECTED"
+		},
+		"IN_PROGRESS": {
+			"UPDATE_PROGRESS": "FOLLOW_UP",
+			"COLLABORATE": "COMPLETED",
+			"BLOCKED": "ON_HOLD"
+		},
+		"FOLLOW_UP": {
+			"REQUEST_UPDATE": "IN_PROGRESS",
+			"ESCALATE": "ON_HOLD",
+			"SEND_REMINDER": "COMPLETED"
+		},
+		"ON_HOLD": {
+			"RESUME": "IN_PROGRESS",
+			"REASSIGN": "ASSIGNED",
+			"CANCEL": "REJECTED"
+		},
+		"COMPLETED": {
+			"CLOSE_TASK": "COMPLETED",
+			"ARCHIVE": "COMPLETED"
+		},
+		"REJECTED": {
+			"CANCEL_TASK": "REJECTED",
+			"PROVIDE_REASON": "REJECTED"
+		}
+	}
+}

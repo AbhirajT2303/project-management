@@ -1,6 +1,7 @@
 package com.project_management.service;
 
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.modelmapper.ModelMapper;
@@ -30,41 +31,48 @@ public class TaskActionServiceImpl implements TaskActionService {
 	private final TaskRepository taskRepository;
 	private final TaskActionHistoryRepository actionHistoryRepository;
 	private final ModelMapper modelMapper;
+	private final WorkflowRuleService workflowRule;
 
 	@Override
 	public TaskResponseDto executeAction(Long taskId, TaskActionRequestDto request) {
 		Task task = taskRepository.findById(taskId)
 				.orElseThrow(() -> new ResourceNotFoundException("Task not found with id: " + taskId));
 
-		if (task.isFinalState()) {
-			throw new IllegalStateException("Task cannot be modified as it is in a final state: " + task.getStatus()
-					+ ". No further actions are allowed on COMPLETED or REJECTED tasks.");
-		}
+		String currentStatus = task.getStatus().name();
+		String actionName = request.getAction().name();
 
-		if (!TaskAction.isActionValidForStatus(request.getAction(), task.getStatus())) {
-
-			List<TaskAction> validActions = TaskAction.getValidActionsForStatus(task.getStatus());
-			throw new ResourceNotFoundException("Action '" + request.getAction() + "' is not valid for task in '"
-					+ task.getStatus() + "' status. Valid actions: " + validActions);
+		if (workflowRule.isFinalSate(currentStatus)) {
+			throw new IllegalStateException("Task is in final state and cannot be modified: " + currentStatus);
 		}
+		if (!workflowRule.isValidAction(currentStatus, actionName)) {
+			Set<String> validActions = workflowRule.getValidActions(currentStatus);
+			throw new IllegalStateException("Action '" + actionName + "' not valid. \nValid actions:  " + validActions);
+		}
+		String nextStatusName = workflowRule.getNextStatus(currentStatus, actionName);
+		Status nextStatus = Status.valueOf(nextStatusName);
 
 		TaskActionHistory history = new TaskActionHistory();
 		history.setTask(task);
 		history.setAction(request.getAction());
 		history.setFromStatus(task.getStatus());
-		history.setToStatus(request.getAction().getToStatus());
+		history.setToStatus(nextStatus);
 		history.setPerformedBy(request.getPerformedBy());
 		history.setComments(request.getComments());
 		history.setReason(request.getReason());
 
 		actionHistoryRepository.save(history);
-		task.setStatus(request.getAction().getToStatus());
+
+		task.setStatus(nextStatus);
+		if (request.getAssignee() != null) {
+			task.setAssignee(request.getAssignee());
+		}
 		Task savedTask = taskRepository.save(task);
+
 		TaskResponseDto responseDto = modelMapper.map(savedTask, TaskResponseDto.class);
-
-		// Add available actions for current status
-		responseDto.setAvailableActions(TaskAction.getValidActionsForStatus(savedTask.getStatus()));
-
+		Set<String> nextValidActionName = workflowRule.getValidActions(nextStatusName);
+		List<TaskAction> availableActions = nextValidActionName.stream().map(TaskAction::valueOf)
+				.collect(Collectors.toList());
+		responseDto.setAvailableActions(availableActions);
 		return responseDto;
 	}
 
