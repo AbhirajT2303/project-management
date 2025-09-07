@@ -4,16 +4,9 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
-import jakarta.persistence.CascadeType;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.OneToMany;
-import jakarta.persistence.OrderBy;
-import jakarta.persistence.PrePersist;
-import jakarta.persistence.PreUpdate;
+import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -26,63 +19,82 @@ import lombok.ToString;
 @ToString(callSuper = true)
 public class Task extends BaseEntity {
 
-	@Column(name = "task_name", length = 30, nullable = false)
-	private String taskName;
+    @Id
+    @GeneratedValue(strategy=GenerationType.IDENTITY)
+    private Long id;
 
-	@Column(name = "description", length = 255, nullable = false)
-	private String description; 
+    @Column(name = "task_name", length = 30, nullable = false)
+    private String taskName;
 
-	@Enumerated(EnumType.STRING)
-	@Column(name = "status", length = 30, nullable = false)
-	private Status status = Status.NEW;
+    @Column(name = "description", length = 255, nullable = false)
+    private String description;
 
-	@Enumerated(EnumType.STRING)
-	@Column(name = "priority", length = 30, nullable = false)
-	private Priority priority;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", length = 30, nullable = false)
+    private Status status = Status.NEW;
 
-	@Column(name = "due_date", nullable = false)
-	private LocalDate dueDate;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "priority", length = 30, nullable = false)
+    private Priority priority;
 
-	@Column(name = "assignee", length = 100)
-	private String assignee;
+    @Column(name = "due_date", nullable = false)
+    private LocalDate dueDate;
 
-	@Column(name = "last_status_change")
-	private LocalDateTime lastStatusChange;
+    @Column(name = "assignee", length = 100)
+    private String assignee;
 
-	@OneToMany(mappedBy = "task", cascade = CascadeType.ALL, orphanRemoval = true)
-	@OrderBy("performedAt DESC")
-	private List<TaskActionHistory> actionHistory = new ArrayList<>();
+    @Column(name = "last_status_change")
+    private LocalDateTime lastStatusChange;
 
-	@PrePersist
-	protected void onCreate() {
-		if (status == null) {
-			status = Status.NEW;
-		}
-		lastStatusChange = LocalDateTime.now();
-	}
+    @OneToMany(mappedBy = "task", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("performedAt DESC")
+    private List<TaskActionHistory> actionHistory = new ArrayList<>();
 
-	@PreUpdate
-	protected void onUpdate() {
-		lastStatusChange = LocalDateTime.now();
-	}
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "tenant_id", referencedColumnName = "tenant_id", nullable = false)
+    private Tenant tenant;
 
-	public boolean isFinalState() {
-		return status == Status.COMPLETED || status == Status.REJECTED;
-	}
+    @PrePersist
+    protected void onCreate() {
+        if (status == null) {
+            status = Status.NEW;
+        }
+        lastStatusChange = LocalDateTime.now();
+    }
 
-	public boolean canBeAssigned() {
-		return status == Status.NEW || status == Status.ON_HOLD;
-	}
+    @PreUpdate
+    protected void onUpdate() {
+        lastStatusChange = LocalDateTime.now();
+    }
 
-	public boolean isInProgress() {
-		return status == Status.IN_PROGRESS;
-	}
+    public boolean isFinalState() {
+        return status == Status.COMPLETED || status == Status.REJECTED;
+    }
 
-	public String getAssigneeDisplayName() {
-		return assignee != null ? assignee : "Unassigned";
-	}
+    public boolean canBeAssigned() {
+        return status == Status.NEW || status == Status.ON_HOLD;
+    }
 
-	public TaskActionHistory getLastAction() {
-		return actionHistory.isEmpty() ? null : actionHistory.get(0);
-	}
+    public boolean isInProgress() {
+        return status == Status.IN_PROGRESS;
+    }
+
+    public String getAssigneeDisplayName() {
+        return assignee != null ? assignee : "Unassigned";
+    }
+
+    public TaskActionHistory getLastAction() {
+        return actionHistory.isEmpty() ? null : actionHistory.get(0);
+    }
+
+    public void setTenantId(UUID tenantId) {
+        if (this.tenant == null) {
+            this.tenant = new Tenant();
+        }
+        this.tenant.setId(tenantId);
+    }
+
+    public UUID getTenantUuid() {
+        return this.tenant != null ? this.tenant.getId() : null;
+    }
 }

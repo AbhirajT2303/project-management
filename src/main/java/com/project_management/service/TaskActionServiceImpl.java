@@ -2,18 +2,17 @@ package com.project_management.service;
 
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
+import com.project_management.context.TenantContext;
+import com.project_management.entities.*;
 import org.modelmapper.ModelMapper;
 import org.springframework.stereotype.Service;
 
 import com.project_management.dto.TaskActionDto;
 import com.project_management.dto.TaskActionRequestDto;
 import com.project_management.dto.TaskResponseDto;
-import com.project_management.entities.Status;
-import com.project_management.entities.Task;
-import com.project_management.entities.TaskAction;
-import com.project_management.entities.TaskActionHistory;
 import com.project_management.exception.ResourceNotFoundException;
 import com.project_management.repository.TaskActionHistoryRepository;
 import com.project_management.repository.TaskRepository;
@@ -35,7 +34,9 @@ public class TaskActionServiceImpl implements TaskActionService {
 
 	@Override
 	public TaskResponseDto executeAction(Long taskId, TaskActionRequestDto request) {
-		Task task = taskRepository.findById(taskId)
+        UUID tenantId = TenantContext.getCurrentTenant();
+
+        Task task = taskRepository.findByIdAndTenant_Id(taskId,tenantId)
 				.orElseThrow(() -> new ResourceNotFoundException("Task not found with id: " + taskId));
 
 		String currentStatus = task.getStatus().name();
@@ -53,6 +54,7 @@ public class TaskActionServiceImpl implements TaskActionService {
 
 		TaskActionHistory history = new TaskActionHistory();
 		history.setTask(task);
+        history.setTenantId(tenantId);
 		history.setAction(request.getAction());
 		history.setFromStatus(task.getStatus());
 		history.setToStatus(nextStatus);

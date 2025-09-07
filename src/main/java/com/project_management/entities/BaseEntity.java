@@ -20,9 +20,6 @@ import lombok.ToString;
 @Setter
 @ToString
 public class BaseEntity {
-	@Id
-	@GeneratedValue(strategy=GenerationType.IDENTITY)
-	private Long id;
 	
 	@CreationTimestamp
 	@Column(name="created_on")
