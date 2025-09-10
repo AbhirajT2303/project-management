@@ -2,11 +2,13 @@ package com.project_management.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.project_management.context.TenantContext;
-import com.project_management.dto.ImportResult;
 import com.project_management.dto.TaskRequestDto;
 import com.project_management.dto.TaskResponseDto;
+import com.project_management.entities.ProcessStatus;
+import com.project_management.entities.ProcessTracking;
 import com.project_management.entities.Task;
 import com.project_management.exception.ResourceNotFoundException;
+import com.project_management.repository.ProcessTrackingRepository;
 import com.project_management.repository.TaskRepository;
 import com.theokanning.openai.completion.chat.ChatCompletionRequest;
 import com.theokanning.openai.completion.chat.ChatCompletionResult;
@@ -25,6 +27,7 @@ import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.modelmapper.ModelMapper;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -33,6 +36,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.lang.reflect.Field;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -51,13 +55,15 @@ public class TaskServiceImpl implements TaskService {
             DateTimeFormatter.ofPattern("dd/MM/yyyy"), DateTimeFormatter.ofPattern("MM/dd/yyyy"),
             DateTimeFormatter.ofPattern("dd-MM-yyyy"), DateTimeFormatter.ofPattern("MM-dd-yyyy")};
     private final TenantService tenantService;
+    private final ObjectMapper mapper;
+    private final ProcessTrackingRepository processTrackingRepository;
     boolean aiMappingUsed = false;
 
     @Override
     public TaskResponseDto createTask(TaskRequestDto taskRequestDto) {
         log.info("Creating new task:{}", taskRequestDto.getTaskName());
         UUID tenantId = TenantContext.getCurrentTenant();
-        log.info("in createTask: "+ tenantId);
+        log.info("in createTask: " + tenantId);
         if (!tenantService.existsById(tenantId)) {
             throw new ResourceNotFoundException("Active tenant not found with id:" + tenantId);
         }
@@ -102,15 +108,24 @@ public class TaskServiceImpl implements TaskService {
     public boolean deleteTask(Long taskId) {
         UUID tenantId = TenantContext.getCurrentTenant();
 
-        Task task = taskRepository.findByIdAndTenant_Id(taskId,tenantId)
+        Task task = taskRepository.findByIdAndTenant_Id(taskId, tenantId)
                 .orElseThrow(() -> new ResourceNotFoundException("Task not found with id: " + taskId));
         taskRepository.delete(task);
         return true;
     }
 
+    @Async("threads")
     @Override
-    public ImportResult importCsv(MultipartFile file) {
+    public void importCsvAsync(MultipartFile file, String processId) {
         String fileName = file.getOriginalFilename();
+        UUID tenantId = TenantContext.getCurrentTenant();
+
+        ProcessTracking process = new ProcessTracking();
+        process.setProcessId(UUID.fromString(processId));
+        process.setTenantId(tenantId);
+        process.setFileName(fileName);
+        process.setStatus(ProcessStatus.PROCESSING);
+        process.setStartedAt(LocalDateTime.now());
 
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(file.getInputStream()));
              CSVParser csvParser = new CSVParser(reader, CSVFormat.DEFAULT.withFirstRecordAsHeader())) {
@@ -133,6 +148,10 @@ public class TaskServiceImpl implements TaskService {
             log.info("Column mapping created: {}", columnMapping);
 
             if (columnMapping.isEmpty()) {
+                process.setStatus(ProcessStatus.FAILED);
+                process.setErrorMessages("No matching columns found between Excel file and Task entity. "
+                        + "Please check column names in your Excel file.");
+
                 throw new RuntimeException("No matching columns found between CSV file and Task entity. "
                         + "Please check column names in your CSV file.");
             }
@@ -165,6 +184,8 @@ public class TaskServiceImpl implements TaskService {
                     } catch (Exception e) {
                         log.warn("Error processing row {} column '{}': {}", totalRows, trimmedCsvColumn,
                                 e.getMessage());
+                        process.setStatus(ProcessStatus.FAILED);
+                        process.setErrorMessages(e.getMessage());
                     }
                 }
 
@@ -182,24 +203,53 @@ public class TaskServiceImpl implements TaskService {
             int rowsSaved = savedTasks.size();
             int rowsSkipped = totalRows - rowsSaved;
 
+            Thread.sleep(5000);
+            process.setTotalRowsFound(totalRows);
+            process.setRowsWithData(rowsWithData);
+            process.setRowsProcessed(totalRows);
+            process.setTotalRowsSaved(rowsSaved);
+            process.setTotalRowsSkipped(rowsSkipped);
+            process.setAiMappingUsed(aiMappingUsed);
+            process.setDetectedColumnMappingsJson(mapper.writeValueAsString(columnMapping));
+            process.setStatus(ProcessStatus.COMPLETED);
+            process.setCompletedAt(LocalDateTime.now());
+            process.setResultSummary(String.format(
+                    "CSV import completed successfully: %d total rows, %d rows with data, %d saved, %d skipped",
+                    totalRows, rowsWithData, rowsSaved, rowsSkipped));
+
             log.info("CSV import completed - Total rows: {}, Rows with data: {}, Rows saved: {}, Rows skipped: {}",
                     totalRows, rowsWithData, rowsSaved, rowsSkipped);
 
-            return new ImportResult(totalRows, rowsWithData, rowsSaved, rowsSkipped, fileName, columnMapping,
-                    aiMappingUsed);
-
         } catch (IOException e) {
             log.error("Error processing CSV file: {}", e.getMessage(), e);
-            throw new RuntimeException("Failed to process CSV file: " + e.getMessage());
+            process.setStatus(ProcessStatus.FAILED);
+            process.setErrorMessages("File processing error: " + e.getMessage());
+            process.setCompletedAt(LocalDateTime.now());
+            process.setResultSummary("Import failed due to file processing error");
         } catch (Exception e) {
             log.error("Unexpected error during CSV import: {}", e.getMessage(), e);
-            throw new RuntimeException("CSV import failed: " + e.getMessage());
+            process.setStatus(ProcessStatus.FAILED);
+            process.setErrorMessages("Unexpected error: " + e.getMessage());
+            process.setCompletedAt(LocalDateTime.now());
+            process.setResultSummary("Import failed due to unexpected error");
+        } finally {
+            processTrackingRepository.save(process);
         }
     }
 
+    @Async("threads")
     @Override
-    public ImportResult importExcel(MultipartFile file) {
+    public void importExcelAsync(MultipartFile file, String processId) {
         String fileName = file.getOriginalFilename();
+        UUID tenantId = TenantContext.getCurrentTenant();
+
+        log.info("Into import Excel service, tenant Id : {}", tenantId);
+        ProcessTracking process = new ProcessTracking();
+        process.setProcessId(UUID.fromString(processId));
+        process.setTenantId(tenantId);
+        process.setFileName(fileName);
+        process.setStatus(ProcessStatus.PROCESSING);
+        process.setStartedAt(LocalDateTime.now());
 
         try {
             Workbook workbook;
@@ -246,6 +296,9 @@ public class TaskServiceImpl implements TaskService {
 
             if (columnMapping.isEmpty()) {
                 workbook.close();
+                process.setStatus(ProcessStatus.FAILED);
+                process.setErrorMessages("No matching columns found between Excel file and Task entity. "
+                        + "Please check column names in your Excel file.");
                 throw new RuntimeException("No matching columns found between Excel file and Task entity. "
                         + "Please check column names in your Excel file.");
             }
@@ -284,6 +337,8 @@ public class TaskServiceImpl implements TaskService {
                     } catch (Exception e) {
                         log.warn("Error processing Excel row {} column '{}': {}", totalRows, trimmedExcelColumn,
                                 e.getMessage());
+                        process.setStatus(ProcessStatus.FAILED);
+                        process.setErrorMessages(e.getMessage());
                     }
                 }
 
@@ -307,15 +362,38 @@ public class TaskServiceImpl implements TaskService {
             log.info("Excel import completed - Total rows: {}, Rows with data: {}, Rows saved: {}, Rows skipped: {}",
                     totalRows, rowsWithData, rowsSaved, rowsSkipped);
 
-            return new ImportResult(totalRows, rowsWithData, rowsSaved, rowsSkipped, fileName, columnMapping,
-                    aiMappingUsed);
 
+            Thread.sleep(5000);
+            process.setTotalRowsFound(totalRows);
+            process.setRowsWithData(rowsWithData);
+            process.setRowsProcessed(totalRows);
+            process.setTotalRowsSaved(rowsSaved);
+            process.setTotalRowsSkipped(rowsSkipped);
+            process.setAiMappingUsed(aiMappingUsed);
+            process.setDetectedColumnMappingsJson(mapper.writeValueAsString(columnMapping));
+            process.setStatus(ProcessStatus.COMPLETED);
+            process.setCompletedAt(LocalDateTime.now());
+            process.setResultSummary(String.format(
+                    "Excel import completed successfully: %d total rows, %d rows with data, %d saved, %d skipped",
+                    totalRows, rowsWithData, rowsSaved, rowsSkipped));
+
+            log.info("Excel import completed - Total rows: {}, Rows with data: {}, Rows saved: {}, Rows skipped: {}",
+                    totalRows, rowsWithData, rowsSaved, rowsSkipped);
         } catch (IOException e) {
             log.error("Error processing Excel file: {}", e.getMessage(), e);
-            throw new RuntimeException("Failed to process Excel file: " + e.getMessage());
+            process.setStatus(ProcessStatus.FAILED);
+            process.setErrorMessages("File processing error: " + e.getMessage());
+            process.setCompletedAt(LocalDateTime.now());
+            process.setResultSummary("Import failed due to file processing error");
+
         } catch (Exception e) {
             log.error("Unexpected error during Excel import: {}", e.getMessage(), e);
-            throw new RuntimeException("Excel import failed: " + e.getMessage());
+            process.setStatus(ProcessStatus.FAILED);
+            process.setErrorMessages("Unexpected error: " + e.getMessage());
+            process.setCompletedAt(LocalDateTime.now());
+            process.setResultSummary("Import failed due to unexpected error");
+        } finally {
+            processTrackingRepository.save(process);
         }
     }
 
@@ -400,8 +478,7 @@ public class TaskServiceImpl implements TaskService {
 
                 String jsonMapping = result.getChoices().get(0).getMessage().getContent().trim();
 
-                ObjectMapper objectMapper = new ObjectMapper();
-                Map<String, String> aiMapping = objectMapper.readValue(jsonMapping, Map.class);
+                Map<String, String> aiMapping = mapper.readValue(jsonMapping, Map.class);
 
                 mapping.putAll(aiMapping);
                 log.info("AI mapping result: {}", jsonMapping);
@@ -479,6 +556,7 @@ public class TaskServiceImpl implements TaskService {
         throw new RuntimeException("Unable to parse date: " + dateStr
                 + ". Supported formats: yyyy-MM-dd, dd/MM/yyyy, MM/dd/yyyy, dd-MM-yyyy, MM-dd-yyyy");
     }
+
     private void setTenantForImportedTasks(List<Task> tasks) {
         UUID tenantId = TenantContext.getCurrentTenant();
         tasks.forEach(task -> task.setTenantId(tenantId));

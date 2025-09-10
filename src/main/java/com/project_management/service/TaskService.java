@@ -19,7 +19,7 @@ public interface TaskService {
 
 	boolean deleteTask(Long taskId);
 
-	ImportResult importCsv(MultipartFile file);
+	void importCsvAsync(MultipartFile file, String processId);
 
-	ImportResult importExcel(MultipartFile file);
+	void importExcelAsync(MultipartFile file, String processId);
 }

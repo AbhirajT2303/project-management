@@ -60,7 +60,6 @@ public class TenantInterceptor implements HandlerInterceptor {
             UUID tenantId = UUID.fromString(tenantIdString.trim());
             log.info("Parsed tenant ID: {} from {}", tenantId, source);
 
-            // 5. Check if tenant exists and is active
             if (!tenantService.existsById(tenantId)) {
                 log.error("Tenant with ID {} not found or inactive", tenantId);
                 sendErrorResponse(response, "Tenant not found or inactive");

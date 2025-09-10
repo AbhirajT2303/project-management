@@ -53,7 +53,6 @@ public class GlobalExceptionHandler {
 
 		String message = "Invalid JSON format";
 
-		// Handle specific JSON parsing errors
 		if (ex.getCause() instanceof InvalidFormatException) {
 			InvalidFormatException ife = (InvalidFormatException) ex.getCause();
 			String fieldName = ife.getPath().isEmpty() ? "unknown" : ife.getPath().get(0).getFieldName();
