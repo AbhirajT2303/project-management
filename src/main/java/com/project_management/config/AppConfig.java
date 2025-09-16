@@ -37,7 +37,7 @@ public class AppConfig {
     public CorsFilter corsFilter() {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowCredentials(true);
-        config.addAllowedOrigin("https://lucid-prosperity-production.up.railway.app");
+        config.addAllowedOrigin("https://project-management-ui-production.up.railway.app");
         config.addAllowedHeader("*");
         config.addAllowedMethod("*");
 
