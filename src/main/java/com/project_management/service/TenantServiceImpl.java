@@ -1,10 +1,12 @@
 package com.project_management.service;
 
+import com.project_management.dto.TenantDto;
 import com.project_management.entities.Tenant;
 import com.project_management.exception.ResourceNotFoundException;
 import com.project_management.repository.TenantRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.modelmapper.ModelMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,21 +20,24 @@ import java.util.UUID;
 public class TenantServiceImpl implements TenantService {
 
     private final TenantRepository tenantRepository;
+    private final ModelMapper modelMapper;
 
     @Override
-    public Tenant createTenant(Tenant tenant) {
+    public TenantDto createTenant(TenantDto tenantDto) {
+        Tenant tenant = modelMapper.map(tenantDto, Tenant.class);
         tenant.setId(null);
         tenant.setActive(true);
-        return tenantRepository.save(tenant);
+
+        return modelMapper.map(tenantRepository.save(tenant), TenantDto.class);
     }
 
     @Override
-    public Tenant updateTenant(UUID id, Tenant tenant) {
+    public TenantDto updateTenant(UUID id, TenantDto tenant) {
         Tenant existing = tenantRepository.findById(id).orElseThrow(
                 () -> new ResourceNotFoundException("Tenant", "id", id));
         existing.setTenantName(tenant.getTenantName());
         existing.setActive(tenant.isActive());
-        return tenantRepository.save(existing);
+        return modelMapper.map(tenantRepository.save(existing), TenantDto.class);
     }
 
     @Override
@@ -43,20 +48,20 @@ public class TenantServiceImpl implements TenantService {
     }
 
     @Override
-    public Tenant getTenantById(UUID id) {
-        return tenantRepository.findByIdAndIsActiveTrue(id).orElseThrow(
+    public TenantDto getTenantById(UUID id) {
+        return modelMapper.map(tenantRepository.findByIdAndIsActiveTrue(id).orElseThrow(
                 () -> new ResourceNotFoundException("Tenant", "id", id)
-        );
+        ), TenantDto.class);
     }
 
     @Override
-    public List<Tenant> getAllTenant() {
-        return tenantRepository.findAllByIsActiveTrue();
+    public List<TenantDto> getAllTenant() {
+        return tenantRepository.findAllByIsActiveTrue().stream().map(tenant -> modelMapper.map(tenant, TenantDto.class)).toList();
     }
 
     @Override
     public boolean existsById(UUID id) {
-        log.info("in exist by id in tenant serviceL: "+ id);
+        log.info("in exist by id in tenant serviceL: " + id);
         return tenantRepository.existsByIdAndIsActiveTrue(id);
     }
 }

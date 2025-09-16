@@ -1,13 +1,13 @@
 package com.project_management.entities;
 
-import java.time.LocalDateTime;
-import java.util.UUID;
-
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.ToString;
+
+import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Entity
 @Table(name = "task_action_history")

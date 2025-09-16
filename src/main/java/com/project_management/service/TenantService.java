@@ -1,20 +1,20 @@
 package com.project_management.service;
 
-import com.project_management.entities.Tenant;
+import com.project_management.dto.TenantDto;
 
 import java.util.List;
 import java.util.UUID;
 
 public interface TenantService {
-    Tenant createTenant(Tenant tenant);
+    TenantDto createTenant(TenantDto tenant);
 
-    Tenant updateTenant(UUID id, Tenant tenant);
+    TenantDto updateTenant(UUID id, TenantDto tenant);
 
     void deleteTenant(UUID id);
 
-    Tenant getTenantById(UUID id);
+    TenantDto getTenantById(UUID id);
 
-    List<Tenant> getAllTenant();
+    List<TenantDto> getAllTenant();
 
     boolean existsById(UUID id);
 }

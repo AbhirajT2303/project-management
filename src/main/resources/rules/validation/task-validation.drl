@@ -1,0 +1,61 @@
+package rules.validation
+
+import com.project_management.dto.TaskRequestDto
+import com.project_management.validation.ValidationResult
+import java.time.LocalDate
+
+rule "Task name is required"
+when
+    $dto: TaskRequestDto(taskName == null || taskName.trim().isEmpty())
+    $result: ValidationResult()
+then
+    $result.addViolation("taskName", "Task name is required ");
+end
+
+rule "Task name max length 30"
+when
+    $dto: TaskRequestDto(taskName != null && taskName.length() > 30)
+    $result: ValidationResult()
+then
+    $result.addViolation("taskName", "Task name must not exceed 30 characters");
+end
+
+rule "Description is required"
+when
+    $dto: TaskRequestDto(description == null || description.trim().isEmpty())
+    $result: ValidationResult()
+then
+    $result.addViolation("description", "Description is required");
+end
+
+rule "Description max length 255"
+when
+    $dto: TaskRequestDto(description != null && description.length() > 255)
+    $result: ValidationResult()
+then
+    $result.addViolation("description", "Description must not exceed 255 characters");
+end
+
+rule "Priority is required"
+when
+    $dto: TaskRequestDto(priority == null)
+    $result: ValidationResult()
+then
+    $result.addViolation("priority", "Priority is required");
+end
+
+rule "Due date is required"
+when
+    $dto: TaskRequestDto(dueDate == null)
+    $result: ValidationResult()
+then
+    $result.addViolation("dueDate", "Due date is required");
+end
+
+rule "Due date must be in future"
+when
+    $dto: TaskRequestDto(dueDate != null && dueDate.isBefore(LocalDate.now().plusDays(1)))
+    $result: ValidationResult()
+then
+    $result.addViolation("dueDate", "Due date must be in the future");
+end

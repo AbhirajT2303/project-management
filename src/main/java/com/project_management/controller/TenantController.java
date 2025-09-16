@@ -1,6 +1,7 @@
 package com.project_management.controller;
 
 import com.project_management.dto.ApiResponse;
+import com.project_management.dto.TenantDto;
 import com.project_management.entities.Tenant;
 import com.project_management.service.TenantService;
 import jakarta.validation.Valid;
@@ -17,32 +18,33 @@ import java.util.UUID;
 @RequestMapping("/api/v1/tenants")
 @Validated
 @RequiredArgsConstructor
+@CrossOrigin("*")
 public class TenantController {
     private final TenantService tenantService;
 
     @PostMapping
-    public ResponseEntity<ApiResponse<Tenant>> createTenant(@Valid @RequestBody Tenant tenant) {
-        Tenant created = tenantService.createTenant(tenant);
+    public ResponseEntity<ApiResponse<TenantDto>> createTenant(@Valid @RequestBody TenantDto tenant) {
+        TenantDto created = tenantService.createTenant(tenant);
         return ResponseEntity
                 .status(HttpStatus.OK)
                 .body(new ApiResponse<>(true, "Tenant created successful", created));
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<ApiResponse<Tenant>> getTenant(@PathVariable UUID id) {
-        Tenant tenant = tenantService.getTenantById(id);
+    public ResponseEntity<ApiResponse<TenantDto>> getTenant(@PathVariable UUID id) {
+        TenantDto tenant = tenantService.getTenantById(id);
         return ResponseEntity.ok(new ApiResponse<>(true, "Tenant retrieved successfully", tenant));
     }
 
     @GetMapping
-    public ResponseEntity<ApiResponse<List<Tenant>>> getAllTenant() {
-        List<Tenant> tenants = tenantService.getAllTenant();
+    public ResponseEntity<ApiResponse<List<TenantDto>>> getAllTenant() {
+        List<TenantDto> tenants = tenantService.getAllTenant();
         return ResponseEntity.ok(new ApiResponse<>(true, "Tenants retrieved successfully", tenants));
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<ApiResponse<Tenant>> updateTenant(@PathVariable UUID id, @Valid @RequestBody Tenant tenant) {
-        Tenant updatedTenant = tenantService.updateTenant(id, tenant);
+    public ResponseEntity<ApiResponse<TenantDto>> updateTenant(@PathVariable UUID id, @Valid @RequestBody TenantDto tenant) {
+        TenantDto updatedTenant = tenantService.updateTenant(id, tenant);
         return ResponseEntity.ok(new ApiResponse<>(true, "Tenant updated successfully", updatedTenant));
     }
 

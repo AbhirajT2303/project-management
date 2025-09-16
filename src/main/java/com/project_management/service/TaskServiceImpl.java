@@ -2,14 +2,16 @@ package com.project_management.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.project_management.context.TenantContext;
+import com.project_management.dto.TaskActionHistoryDto;
 import com.project_management.dto.TaskRequestDto;
 import com.project_management.dto.TaskResponseDto;
-import com.project_management.entities.ProcessStatus;
-import com.project_management.entities.ProcessTracking;
-import com.project_management.entities.Task;
+import com.project_management.dto.TaskSearchDto;
+import com.project_management.entities.*;
 import com.project_management.exception.ResourceNotFoundException;
 import com.project_management.repository.ProcessTrackingRepository;
+import com.project_management.repository.TaskActionHistoryRepository;
 import com.project_management.repository.TaskRepository;
+import com.project_management.specification.TaskSpecifications;
 import com.theokanning.openai.completion.chat.ChatCompletionRequest;
 import com.theokanning.openai.completion.chat.ChatCompletionResult;
 import com.theokanning.openai.completion.chat.ChatMessage;
@@ -27,6 +29,11 @@ import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.modelmapper.ModelMapper;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -57,6 +64,7 @@ public class TaskServiceImpl implements TaskService {
     private final TenantService tenantService;
     private final ObjectMapper mapper;
     private final ProcessTrackingRepository processTrackingRepository;
+    private final TaskActionHistoryRepository taskActionHistoryRepository;
     boolean aiMappingUsed = false;
 
     @Override
@@ -395,6 +403,64 @@ public class TaskServiceImpl implements TaskService {
         } finally {
             processTrackingRepository.save(process);
         }
+    }
+
+    @Override
+    public Page<TaskResponseDto> searchTasks(TaskSearchDto searchDto) {
+        Specification<Task> spec = TaskSpecifications.withDynamicSearch(
+                searchDto.getTaskName(),
+                searchDto.getDescription(),
+                searchDto.getStatus(),
+                searchDto.getPriority(),
+                searchDto.getAssignee(),
+                searchDto.getDueDateFrom(),
+                searchDto.getDueDateTo());
+        Sort sort = Sort.by(Sort.Direction.ASC, searchDto.getSortBy());
+        Pageable pageable = PageRequest.of(searchDto.getPage(), searchDto.getSize(), sort);
+        Page<Task> taskPage = taskRepository.findAll(spec, pageable);
+
+        return taskPage.map(task -> {
+            TaskResponseDto dto = modelMapper.map(task, TaskResponseDto.class);
+            dto.setAvailableActions(TaskAction.getValidActionsForStatus(task.getStatus()));
+            return dto;
+        });
+    }
+
+    @Override
+    public List<TaskResponseDto> searchTasksList(TaskSearchDto searchDto) {
+        Specification<Task> spec = TaskSpecifications.withDynamicSearch(
+                searchDto.getTaskName(),
+                searchDto.getDescription(),
+                searchDto.getStatus(),
+                searchDto.getPriority(),
+                searchDto.getAssignee(),
+                searchDto.getDueDateFrom(),
+                searchDto.getDueDateTo()
+        );
+
+        Sort sort = Sort.by(
+                "asc".equalsIgnoreCase(searchDto.getSortDir()) ?
+                        Sort.Direction.ASC : Sort.Direction.DESC,
+                searchDto.getSortBy()
+        );
+
+        List<Task> tasks = taskRepository.findAll(spec, sort);
+
+        return tasks.stream()
+                .map(task -> {
+                    TaskResponseDto dto = modelMapper.map(task, TaskResponseDto.class);
+                    dto.setAvailableActions(TaskAction.getValidActionsForStatus(task.getStatus()));
+                    return dto;
+                })
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<TaskActionHistoryDto> getHistoryById(Long id) {
+        UUID tenantId = TenantContext.getCurrentTenant();
+        List<TaskActionHistory> history = taskActionHistoryRepository
+                .findByTaskIdAndTenantIdOrderByPerformedAtDesc(id, tenantId);
+        return history.stream().map(task-> modelMapper.map(task, TaskActionHistoryDto.class)).toList();
     }
 
     private String getCellValueAsString(Cell cell) {

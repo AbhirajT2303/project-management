@@ -1,13 +1,21 @@
 package com.project_management.controller;
 
 import com.project_management.dto.*;
+import com.project_management.entities.Task;
+import com.project_management.repository.TaskActionHistoryRepository;
+import com.project_management.repository.TaskRepository;
 import com.project_management.service.TaskActionService;
 import com.project_management.service.TaskService;
+import com.project_management.service.ValidationService;
+import com.project_management.specification.TaskSpecifications;
 import com.project_management.util.ByteArrayMultipartFile;
+import com.project_management.validation.ValidationResult;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
@@ -17,19 +25,36 @@ import org.springframework.web.multipart.MultipartFile;
 import java.util.List;
 import java.util.UUID;
 
-@RestController
-@RequestMapping("api/v1/tasks")
-@Validated
+
 @Slf4j
+@Validated
+@RestController
 @RequiredArgsConstructor
+@RequestMapping("api/v1/tasks")
+@CrossOrigin(origins = "http://localhost:3000")
 public class TaskController {
 
     private final TaskService taskService;
     private final TaskActionService taskActionService;
+    private final ValidationService validationService;
+    private final TaskRepository taskRepository;
+    private final TaskActionHistoryRepository taskActionHistoryRepository;
 
     @PostMapping
     public ResponseEntity<ApiResponse<TaskResponseDto>> createTask(@Valid @RequestBody TaskRequestDto taskRequest) {
         log.info("Creating new task: {}", taskRequest.getTaskName());
+
+        ValidationResult validation = validationService.validateTaskRequest(taskRequest);
+        if (validation.hasErrors()) {
+            String errorMessage = validation.getViolations().stream()
+                    .map(v -> v.getField() + ": " + v.getMessage())
+                    .reduce((a, b) -> a + ", " + b)
+                    .orElse("Validation failed");
+
+            return ResponseEntity.badRequest()
+                    .body(new ApiResponse<>(false, errorMessage, null));
+        }
+
         TaskResponseDto savedTask = taskService.createTask(taskRequest);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(new ApiResponse<>(true, "Task Created successfully", savedTask));
@@ -51,6 +76,16 @@ public class TaskController {
     public ResponseEntity<ApiResponse<TaskResponseDto>> updateTask(@PathVariable @Positive Long id,
                                                                    @Valid @RequestBody TaskRequestDto taskRequest) {
 
+        ValidationResult validation = validationService.validateTaskRequest(taskRequest);
+        if (validation.hasErrors()) {
+            String errorMessage = validation.getViolations().stream()
+                    .map(v -> v.getField() + ": " + v.getMessage())
+                    .reduce((a, b) -> a + ", " + b)
+                    .orElse("Validation failed");
+
+            return ResponseEntity.badRequest()
+                    .body(new ApiResponse<>(false, errorMessage, null));
+        }
         TaskResponseDto updatedTask = taskService.updateTask(id, taskRequest);
         return ResponseEntity.ok(new ApiResponse<>(true, "Task updated successfully", updatedTask));
     }
@@ -79,7 +114,7 @@ public class TaskController {
         try {
 
             byte[] fileBytes = file.getBytes();
-            MultipartFile persistentFile = new ByteArrayMultipartFile(file.getName(),filename,file.getContentType(),fileBytes);
+            MultipartFile persistentFile = new ByteArrayMultipartFile(file.getName(), filename, file.getContentType(), fileBytes);
 
             if ("csv".equals(extension)) {
                 log.info("Processing CSV file: {}", filename);
@@ -114,5 +149,63 @@ public class TaskController {
             log.error("Error executing action: {}", e.getMessage());
             return ResponseEntity.badRequest().body(new ApiResponse<>(false, e.getMessage(), null));
         }
+    }
+
+    @GetMapping("/search")
+    public ResponseEntity<ApiResponse<Page<TaskResponseDto>>> searchTasks(TaskSearchDto searchDto) {
+        log.info("Task search request received with criteria: {}", searchDto);
+
+        Page<TaskResponseDto> tasks = taskService.searchTasks(searchDto);
+
+        return ResponseEntity.ok(new ApiResponse<>(
+                true,
+                String.format("Found %d tasks matching search criteria (page %d of %d)",
+                        tasks.getTotalElements(), tasks.getNumber() + 1, tasks.getTotalPages()),
+                tasks
+        ));
+    }
+
+    @GetMapping("/search/list")
+    public ResponseEntity<ApiResponse<List<TaskResponseDto>>> searchTasksList(TaskSearchDto searchDto) {
+        log.info("Task search list request received with criteria: {}", searchDto);
+
+        List<TaskResponseDto> tasks = taskService.searchTasksList(searchDto);
+
+        return ResponseEntity.ok(new ApiResponse<>(
+                true,
+                String.format("Found %d tasks matching search criteria", tasks.size()),
+                tasks
+        ));
+    }
+
+    @GetMapping("/search/count")
+    public ResponseEntity<ApiResponse<Long>> getTaskCount(TaskSearchDto searchDto) {
+        log.info("Task count request received with criteria: {}", searchDto);
+
+        Specification<Task> spec = TaskSpecifications.withDynamicSearch(
+                searchDto.getTaskName(),
+                searchDto.getDescription(),
+                searchDto.getStatus(),
+                searchDto.getPriority(),
+                searchDto.getAssignee(),
+                searchDto.getDueDateFrom(),
+                searchDto.getDueDateTo()
+        );
+
+        long count = taskRepository.count(spec);
+
+        return ResponseEntity.ok(new ApiResponse<>(
+                true,
+                String.format("Total tasks matching criteria: %d", count),
+                count
+        ));
+    }
+
+    @GetMapping("/{id}/history")
+    public ResponseEntity<ApiResponse<List<TaskActionHistoryDto>>> getTaskHistory(@PathVariable Long id) {
+        List<TaskActionHistoryDto> history = taskService.getHistoryById(id);
+        if (history.isEmpty())
+            return ResponseEntity.ok(new ApiResponse<>(true, "Task with task Id: " + id + " Not available", null));
+        return ResponseEntity.ok(new ApiResponse<>(true, "Task history fetched successfully", history));
     }
 }
