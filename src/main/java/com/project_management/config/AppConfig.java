@@ -37,7 +37,7 @@ public class AppConfig {
     public CorsFilter corsFilter() {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowCredentials(true);
-        config.addAllowedOrigin("http://localhost:3000");
+        config.addAllowedOrigin("https://lucid-prosperity-production.up.railway.app");
         config.addAllowedHeader("*");
         config.addAllowedMethod("*");
 
